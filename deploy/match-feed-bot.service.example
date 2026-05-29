@@ -1,0 +1,16 @@
+[Unit]
+Description=Velvy Match Feed Telegram Bot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/match-feed-bot
+ExecStart=/usr/bin/node /home/ubuntu/match-feed-bot/src/index.js daemon
+Restart=always
+RestartSec=5
+Environment=NODE_ENV=production
+
+[Install]
+WantedBy=multi-user.target

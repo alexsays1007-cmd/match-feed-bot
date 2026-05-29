@@ -1,0 +1,18 @@
+{
+  "name": "match-feed-bot",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "discover": "node src/index.js discover",
+    "test": "node src/index.js send-test",
+    "matches": "node src/index.js matches",
+    "preview": "node src/index.js preview",
+    "poll": "node src/index.js poll-once",
+    "watch": "node src/index.js watch",
+    "daemon": "node src/index.js daemon"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
