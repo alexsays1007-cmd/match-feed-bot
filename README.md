@@ -39,6 +39,7 @@ selected match.
 ```text
 /source
 /source fotmob
+/source api-football
 /source sportscore
 /matches
 /matches 2
@@ -64,8 +65,11 @@ real secrets in `.env`, never in Git.
 Supported sources:
 
 - FotMob page data extracted from public Next.js page payloads.
+- API-Football official API, when `API_FOOTBALL_KEY` is configured.
 - SportScore free widget API: https://sportscore.com/developers/
 
 FotMob currently provides richer match data, including lineups, events, shotmap,
-xG, and stats when available. SportScore is kept as a simpler fallback source.
-Both are public/unofficial routes and may change.
+xG, and stats when available. API-Football provides official structured events,
+lineups, and statistics when the key and quota are available. SportScore is kept
+as a simpler fallback source. FotMob and SportScore are public/unofficial routes
+and may change.

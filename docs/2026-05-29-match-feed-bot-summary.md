@@ -38,6 +38,7 @@ Current group commands:
 ```text
 /source
 /source fotmob
+/source api-football
 /source sportscore
 /matches
 /matches 2
@@ -410,4 +411,3 @@ Suggested visibility:
 ```text
 private first
 ```
-

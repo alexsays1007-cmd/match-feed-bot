@@ -1,5 +1,12 @@
 import { config, requireChatConfig } from "./config.js";
 import { getUpdates, sendMessage } from "./telegram.js";
+import {
+  extractApiFootballEvents,
+  extractApiFootballLineup,
+  getApiFootballMatches,
+  getApiFootballMatchDetail,
+  makeApiFootballSnapshot
+} from "./apiFootball.js";
 import { getMatches, getMatchDetail, readMatches } from "./sportscore.js";
 import { extractEvents, makeSnapshot, summarizeMatch } from "./events.js";
 import {
@@ -32,7 +39,7 @@ function cleanNeedle(text) {
 }
 
 const PAGE_SIZE = 10;
-const SOURCES = new Set(["sportscore", "fotmob"]);
+const SOURCES = new Set(["sportscore", "fotmob", "api-football"]);
 
 function currentSource() {
   return getRuntime().source || config.matchSource || "sportscore";
@@ -40,6 +47,7 @@ function currentSource() {
 
 async function fetchMatchesForSource(source) {
   if (source === "fotmob") return getFotmobMatches(120);
+  if (source === "api-football") return getApiFootballMatches(120);
   const body = await getMatches(80);
   const allMatches = readMatches(body).map(summarizeMatch);
   const liveOrUpcoming = allMatches.filter((match) => {
@@ -144,11 +152,11 @@ async function status(chatId) {
 async function setSource(arg, chatId) {
   const source = arg.trim().toLowerCase();
   if (!source) {
-    await sendMessage(`Current source: ${currentSource()}\nAvailable: fotmob, sportscore`, chatId);
+    await sendMessage(`Current source: ${currentSource()}\nAvailable: fotmob, api-football, sportscore`, chatId);
     return;
   }
   if (!SOURCES.has(source)) {
-    await sendMessage("Unknown source. Use /source fotmob or /source sportscore.", chatId);
+    await sendMessage("Unknown source. Use /source fotmob, /source api-football, or /source sportscore.", chatId);
     return;
   }
   updateRuntime({ source, lastMatches: [], lastMatchesSource: "", watchSlug: "", watchMatch: null, watchLabel: "" });
@@ -171,7 +179,7 @@ async function handleCommand(message) {
   else if (command === "/status") await status(chatId);
   else if (command === "/source") await setSource(arg, chatId);
   else if (command === "/help") {
-    await sendMessage("Commands:\n/source\n/source fotmob\n/source sportscore\n/matches\n/matches 2\n/watch 1\n/watch team name\n/status\n/stop", chatId);
+    await sendMessage("Commands:\n/source\n/source fotmob\n/source api-football\n/source sportscore\n/matches\n/matches 2\n/watch 1\n/watch team name\n/status\n/stop", chatId);
   }
 }
 
@@ -217,9 +225,21 @@ async function pollMatch() {
   const detail =
     source === "fotmob"
       ? await getFotmobMatchDetail(runtime.watchMatch)
+      : source === "api-football"
+        ? await getApiFootballMatchDetail(runtime.watchMatch)
       : await getMatchDetail(slug);
-  const snapshot = source === "fotmob" ? makeFotmobSnapshot(detail) : makeSnapshot(detail);
-  const lineup = source === "fotmob" ? extractFotmobLineup(detail) : null;
+  const snapshot =
+    source === "fotmob"
+      ? makeFotmobSnapshot(detail)
+      : source === "api-football"
+        ? makeApiFootballSnapshot(detail)
+        : makeSnapshot(detail);
+  const lineup =
+    source === "fotmob"
+      ? extractFotmobLineup(detail)
+      : source === "api-football"
+        ? extractApiFootballLineup(detail)
+        : null;
 
   if (lineup) {
     const freshLineup = unseen([lineup]);
@@ -234,6 +254,8 @@ async function pollMatch() {
       ? []
       : source === "fotmob"
         ? [...extractFotmobEvents(detail), ...extractFotmobShotEvents(detail)].filter(shouldSendEvent)
+        : source === "api-football"
+          ? extractApiFootballEvents(detail).filter(shouldSendEvent)
         : extractEvents(detail).filter(shouldSendEvent);
   const freshEvents = unseen(events);
 

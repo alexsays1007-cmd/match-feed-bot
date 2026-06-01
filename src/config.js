@@ -35,6 +35,7 @@ export const config = {
   sport: process.env.SPORT || "football",
   matchSource: process.env.MATCH_SOURCE || "sportscore",
   matchSlug: process.env.MATCH_SLUG || "",
+  apiFootballKey: process.env.API_FOOTBALL_KEY || "",
   pollSeconds: Number(process.env.POLL_SECONDS || 75),
   commandPollSeconds: Number(process.env.COMMAND_POLL_SECONDS || 3),
   scoreOnly: String(process.env.SCORE_ONLY || "false").toLowerCase() === "true",
