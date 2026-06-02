@@ -134,7 +134,7 @@ export function makeSnapshot(detail) {
   const slug = match?.slug || match?.matchSlug || slugFromUrl(match?.url);
 
   return {
-    key: ["snapshot", slug, home, away, status, minute, score].join("|"),
+    key: ["snapshot", slug, home, away, status, score].join("|"),
     home,
     away,
     status,

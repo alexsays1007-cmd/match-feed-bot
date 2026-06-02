@@ -86,7 +86,12 @@ function shouldFetchLineups(runtime) {
 
 function pollIntervalMs(source) {
   if (source === "api-football") return Math.max(180, config.pollSeconds) * 1000;
+  if (source === "fotmob") return 30 * 1000;
   return Math.max(30, config.pollSeconds) * 1000;
+}
+
+function finishedStatus(status) {
+  return /^(FT|AET|PEN|Finished|Full-Time)$/i.test(String(status || ""));
 }
 
 async function fetchMatchesForSource(source) {
@@ -225,6 +230,7 @@ async function watchMatch(arg, message) {
     watchMatch: match,
     watchLabel: `${match.home} ${match.score} ${match.away}`,
     watchStatus: match.status,
+    finishSeenCount: 0,
     privateChatId: privateChat(message) ? String(chatId) : runtime.privateChatId
   });
   clearSent();
@@ -233,7 +239,7 @@ async function watchMatch(arg, message) {
 }
 
 async function stopWatch(chatId) {
-  updateRuntime({ watchSlug: "", watchLabel: "", watchStatus: "", watchMatch: null });
+  updateRuntime({ watchSlug: "", watchLabel: "", watchStatus: "", watchMatch: null, finishSeenCount: 0 });
   await sendMessage("Stopped match feed.", chatId);
 }
 
@@ -407,6 +413,19 @@ async function pollMatch() {
   if (freshSnapshot.length) {
     await sendFeedMessage(formatSnapshot(snapshot));
     rememberKeys([snapshot.key]);
+  }
+
+  if (finishedStatus(snapshot.status)) {
+    const nextCount = (runtime.finishSeenCount || 0) + 1;
+    const stopAfter = source === "api-football" ? 1 : 3;
+    if (nextCount >= stopAfter) {
+      updateRuntime({ watchSlug: "", watchLabel: "", watchStatus: "", watchMatch: null, finishSeenCount: 0 });
+      await sendFeedMessage("[MATCH_FEED_STOPPED]\nMatch finished. Feed stopped automatically.");
+    } else {
+      updateRuntime({ finishSeenCount: nextCount });
+    }
+  } else if (runtime.finishSeenCount) {
+    updateRuntime({ finishSeenCount: 0 });
   }
 }
 

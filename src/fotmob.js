@@ -129,7 +129,7 @@ export function makeFotmobSnapshot(detail) {
   const minute = header?.status?.liveTime?.short || "";
 
   return {
-    key: ["fotmob-snapshot", detail?.match?.id, status, minute, score].join("|"),
+    key: ["fotmob-snapshot", detail?.match?.id, status, score].join("|"),
     home,
     away,
     score,
