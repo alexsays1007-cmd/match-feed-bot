@@ -39,8 +39,21 @@ function normalizeFixture(item) {
   const fixture = item.fixture || {};
   const teams = item.teams || {};
   const goals = item.goals || {};
+  const score = item.score || {};
   const homeGoals = goals.home;
   const awayGoals = goals.away;
+  const hasFulltimeScore =
+    score.fulltime?.home !== null &&
+    score.fulltime?.home !== undefined &&
+    score.fulltime?.away !== null &&
+    score.fulltime?.away !== undefined;
+  const shownHome = hasFulltimeScore ? score.fulltime.home : homeGoals;
+  const shownAway = hasFulltimeScore ? score.fulltime.away : awayGoals;
+  const rawStatus = fixture.status?.short || fixture.status?.long || "Not started";
+  const status =
+    hasFulltimeScore && /^(1H|2H|HT|NS|TBD)$/i.test(rawStatus)
+      ? "FT"
+      : rawStatus;
 
   return {
     source: "api-football",
@@ -50,10 +63,10 @@ function normalizeFixture(item) {
     home: teams.home?.name || "Home",
     away: teams.away?.name || "Away",
     score:
-      homeGoals !== null && homeGoals !== undefined && awayGoals !== null && awayGoals !== undefined
-        ? `${homeGoals}-${awayGoals}`
+      shownHome !== null && shownHome !== undefined && shownAway !== null && shownAway !== undefined
+        ? `${shownHome}-${shownAway}`
         : "vs",
-    status: fixture.status?.short || fixture.status?.long || "Not started",
+    status,
     utcTime: fixture.date || "",
     league: item.league?.name || "API-Football",
     sortTime: fixture.timestamp ? fixture.timestamp * 1000 : Date.parse(fixture.date || "") || 0
