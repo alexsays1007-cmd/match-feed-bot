@@ -36,6 +36,9 @@ selected match.
 
 ## Telegram Commands
 
+Use control commands in a private chat with the feed bot. The bot will still
+push selected match updates to the configured group chat.
+
 ```text
 /source
 /source fotmob
@@ -43,6 +46,8 @@ selected match.
 /source sportscore
 /matches
 /matches 2
+/find arsenal
+/find world cup
 /watch 1
 /watch team name
 /status

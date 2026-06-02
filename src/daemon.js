@@ -31,7 +31,28 @@ function commandText(message) {
 }
 
 function allowedChat(message) {
-  return String(message?.chat?.id || "") === String(config.chatId);
+  const chatId = String(message?.chat?.id || "");
+  if (chatId === String(config.chatId)) return true;
+
+  if (message?.chat?.type === "private") {
+    const username = (message?.from?.username || "").toLowerCase();
+    const userId = String(message?.from?.id || "");
+    return config.adminUsernames.includes(username) || config.adminUserIds.includes(userId);
+  }
+
+  return false;
+}
+
+function privateChat(message) {
+  return message?.chat?.type === "private";
+}
+
+function shouldStayPrivate(command) {
+  return command === "/matches" || command === "/find" || command === "/search";
+}
+
+async function redirectPrivateOnly(command, chatId) {
+  await sendMessage(`Use ${command} in my private chat so the group stays clean.`, chatId);
 }
 
 function cleanNeedle(text) {
@@ -86,6 +107,59 @@ async function listMatches(chatId, pageArg = "1") {
   await sendMessage(`${note}\n\n${lines.join("\n\n")}${next}`, chatId);
 }
 
+function parseSearchArg(arg) {
+  const parts = arg.trim().split(/\s+/).filter(Boolean);
+  let page = 1;
+  if (parts.length > 1 && /^\d+$/.test(parts.at(-1))) {
+    page = Number(parts.pop());
+  }
+  return { query: parts.join(" "), page };
+}
+
+async function searchMatches(chatId, arg) {
+  const { query, page: requestedPage } = parseSearchArg(arg);
+  if (!query) {
+    await sendMessage("Use /find team or /find league. Example: /find arsenal", chatId);
+    return;
+  }
+
+  const source = currentSource();
+  const allMatches = await fetchMatchesForSource(source);
+  const needle = cleanNeedle(query);
+  const matches = allMatches.filter((match) => {
+    const haystack = cleanNeedle(`${match.home} ${match.away} ${match.league || ""} ${match.status || ""} ${match.slug || ""}`);
+    return haystack.includes(needle);
+  });
+
+  updateRuntime({
+    lastMatches: matches,
+    lastMatchesAt: new Date().toISOString(),
+    lastMatchesSource: source,
+    lastSearch: query
+  });
+
+  if (!matches.length) {
+    await sendMessage(`No ${source} matches found for "${query}".`, chatId);
+    return;
+  }
+
+  const totalPages = Math.max(1, Math.ceil(matches.length / PAGE_SIZE));
+  const page = Number.isInteger(requestedPage)
+    ? Math.min(Math.max(requestedPage, 1), totalPages)
+    : 1;
+  const start = (page - 1) * PAGE_SIZE;
+  const shown = matches.slice(start, start + PAGE_SIZE);
+  const lines = shown.map((match, index) => {
+    const number = start + index + 1;
+    const time = match.utcTime ? ` | ${match.utcTime.replace("T", " ").replace("Z", " UTC")}` : "";
+    const league = match.league ? ` | ${match.league}` : "";
+    return `${number}. ${match.status}${time}${league}\n   ${match.home} ${match.score} ${match.away}\n   /watch ${number}  (${match.slug})`;
+  });
+
+  const next = page < totalPages ? `\n\nNext: /find ${query} ${page + 1}` : "";
+  await sendMessage(`${source.toUpperCase()} search "${query}", page ${page}/${totalPages}.\n\n${lines.join("\n\n")}${next}`, chatId);
+}
+
 function findMatch(arg, matches) {
   const trimmed = arg.trim();
   if (!trimmed) return null;
@@ -100,7 +174,7 @@ function findMatch(arg, matches) {
 
   const needle = cleanNeedle(trimmed);
   return matches.find((match) => {
-    const haystack = cleanNeedle(`${match.home} ${match.away} ${match.slug}`);
+    const haystack = cleanNeedle(`${match.home} ${match.away} ${match.league || ""} ${match.status || ""} ${match.slug}`);
     return haystack.includes(needle);
   });
 }
@@ -145,7 +219,8 @@ async function status(chatId) {
     return;
   }
   await sendMessage(
-    `Currently watching (${runtime.watchSource || currentSource()}):\n${runtime.watchLabel || runtime.watchSlug}\nSlug: ${runtime.watchSlug}`
+    `Currently watching (${runtime.watchSource || currentSource()}):\n${runtime.watchLabel || runtime.watchSlug}\nSlug: ${runtime.watchSlug}`,
+    chatId
   );
 }
 
@@ -173,13 +248,19 @@ async function handleCommand(message) {
   const chatId = message.chat.id;
   console.log(`Command received: ${command} ${arg}`.trim());
 
+  if (shouldStayPrivate(command) && !privateChat(message)) {
+    await redirectPrivateOnly(command, chatId);
+    return;
+  }
+
   if (command === "/matches") await listMatches(chatId, arg || "1");
+  else if (command === "/find" || command === "/search") await searchMatches(chatId, arg);
   else if (command === "/watch") await watchMatch(arg, chatId);
   else if (command === "/stop") await stopWatch(chatId);
   else if (command === "/status") await status(chatId);
   else if (command === "/source") await setSource(arg, chatId);
   else if (command === "/help") {
-    await sendMessage("Commands:\n/source\n/source fotmob\n/source api-football\n/source sportscore\n/matches\n/matches 2\n/watch 1\n/watch team name\n/status\n/stop", chatId);
+    await sendMessage("Commands:\n/source\n/source fotmob\n/source api-football\n/source sportscore\n/matches\n/matches 2\n/find arsenal\n/find world cup\n/watch 1\n/watch team name\n/status\n/stop", chatId);
   }
 }
 
@@ -194,7 +275,7 @@ async function pollCommands() {
           update_id: update.update_id,
           chat_id: message.chat?.id,
           from: message.from?.username || message.from?.id,
-          text: message.text || "",
+          text: message.text?.startsWith("/") ? message.text : "",
           new_chat_members: message.new_chat_members?.map((member) => member.username || member.id) || []
         })
       );

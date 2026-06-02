@@ -31,6 +31,14 @@ loadDotenv();
 export const config = {
   token: process.env.MATCH_FEED_BOT_TOKEN || "",
   chatId: process.env.TELEGRAM_CHAT_ID || "",
+  adminUsernames: (process.env.ADMIN_USERNAMES || "velvyyyy")
+    .split(",")
+    .map((item) => item.trim().replace(/^@/, "").toLowerCase())
+    .filter(Boolean),
+  adminUserIds: (process.env.ADMIN_USER_IDS || "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean),
   rivenBotUsername: (process.env.RIVEN_BOT_USERNAME || "cain_r_bot").replace(/^@/, ""),
   sport: process.env.SPORT || "football",
   matchSource: process.env.MATCH_SOURCE || "sportscore",

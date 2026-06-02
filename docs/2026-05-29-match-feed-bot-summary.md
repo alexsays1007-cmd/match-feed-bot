@@ -35,6 +35,10 @@ Only the new `match-feed-bot` service was restarted during bot changes.
 
 Current group commands:
 
+As of the later private-control update, these commands should preferably be
+sent in a private chat with the feed bot. Selected match updates still go to
+the configured group chat.
+
 ```text
 /source
 /source fotmob
@@ -42,6 +46,8 @@ Current group commands:
 /source sportscore
 /matches
 /matches 2
+/find arsenal
+/find world cup
 /watch 1
 /watch team name
 /status
