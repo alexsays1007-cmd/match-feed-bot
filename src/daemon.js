@@ -66,6 +66,15 @@ function currentSource() {
   return getRuntime().source || config.matchSource || "sportscore";
 }
 
+function currentTarget() {
+  return getRuntime().target || "group";
+}
+
+function deliveryChatId() {
+  const runtime = getRuntime();
+  return currentTarget() === "private" && runtime.privateChatId ? runtime.privateChatId : config.chatId;
+}
+
 async function fetchMatchesForSource(source) {
   if (source === "fotmob") return getFotmobMatches(120);
   if (source === "api-football") return getApiFootballMatches(120);
@@ -179,7 +188,8 @@ function findMatch(arg, matches) {
   });
 }
 
-async function watchMatch(arg, chatId) {
+async function watchMatch(arg, message) {
+  const chatId = message.chat.id;
   let runtime = getRuntime();
   let matches = runtime.lastMatches || [];
   const source = runtime.lastMatchesSource || currentSource();
@@ -200,10 +210,11 @@ async function watchMatch(arg, chatId) {
     watchSlug: match.slug,
     watchMatch: match,
     watchLabel: `${match.home} ${match.score} ${match.away}`,
-    watchStatus: match.status
+    watchStatus: match.status,
+    privateChatId: privateChat(message) ? String(chatId) : runtime.privateChatId
   });
   clearSent();
-  await sendMessage(`Watching now:\n${match.home} ${match.score} ${match.away}\nSlug: ${match.slug}`, chatId);
+  await sendMessage(`Watching now:\n${match.home} ${match.score} ${match.away}\nSlug: ${match.slug}\nTarget: ${currentTarget()}`, chatId);
   lastMatchPoll = 0;
 }
 
@@ -219,7 +230,7 @@ async function status(chatId) {
     return;
   }
   await sendMessage(
-    `Currently watching (${runtime.watchSource || currentSource()}):\n${runtime.watchLabel || runtime.watchSlug}\nSlug: ${runtime.watchSlug}`,
+    `Currently watching (${runtime.watchSource || currentSource()}):\n${runtime.watchLabel || runtime.watchSlug}\nSlug: ${runtime.watchSlug}\nTarget: ${currentTarget()}`,
     chatId
   );
 }
@@ -239,6 +250,32 @@ async function setSource(arg, chatId) {
   await sendMessage(`Source switched to ${source}. Run /matches to list matches.`, chatId);
 }
 
+async function setTarget(arg, message) {
+  const target = arg.trim().toLowerCase();
+  const chatId = message.chat.id;
+  if (!target) {
+    await sendMessage(`Current target: ${currentTarget()}\nAvailable: group, private`, chatId);
+    return;
+  }
+  if (target !== "group" && target !== "private") {
+    await sendMessage("Unknown target. Use /target group or /target private.", chatId);
+    return;
+  }
+  if (target === "private" && !privateChat(message)) {
+    await sendMessage("Use /target private in my private chat first, so I know where to send test updates.", chatId);
+    return;
+  }
+  updateRuntime({
+    target,
+    privateChatId: privateChat(message) ? String(chatId) : getRuntime().privateChatId
+  });
+  await sendMessage(`Delivery target switched to ${target}.`, chatId);
+}
+
+async function sendFeedMessage(text) {
+  return sendMessage(text, deliveryChatId());
+}
+
 async function handleCommand(message) {
   const text = commandText(message);
   if (!text || !allowedChat(message)) return;
@@ -255,12 +292,13 @@ async function handleCommand(message) {
 
   if (command === "/matches") await listMatches(chatId, arg || "1");
   else if (command === "/find" || command === "/search") await searchMatches(chatId, arg);
-  else if (command === "/watch") await watchMatch(arg, chatId);
+  else if (command === "/watch") await watchMatch(arg, message);
   else if (command === "/stop") await stopWatch(chatId);
   else if (command === "/status") await status(chatId);
   else if (command === "/source") await setSource(arg, chatId);
+  else if (command === "/target") await setTarget(arg, message);
   else if (command === "/help") {
-    await sendMessage("Commands:\n/source\n/source fotmob\n/source api-football\n/source sportscore\n/matches\n/matches 2\n/find arsenal\n/find world cup\n/watch 1\n/watch team name\n/status\n/stop", chatId);
+    await sendMessage("Commands:\n/source\n/source fotmob\n/source api-football\n/source sportscore\n/target\n/target private\n/target group\n/matches\n/matches 2\n/find arsenal\n/find world cup\n/watch 1\n/watch team name\n/status\n/stop", chatId);
   }
 }
 
@@ -325,7 +363,7 @@ async function pollMatch() {
   if (lineup) {
     const freshLineup = unseen([lineup]);
     if (freshLineup.length) {
-      await sendMessage(formatLineup(lineup));
+      await sendFeedMessage(formatLineup(lineup));
       rememberKeys([lineup.key]);
     }
   }
@@ -342,7 +380,7 @@ async function pollMatch() {
 
   if (freshEvents.length) {
     for (const event of freshEvents) {
-      await sendMessage(formatEvent(event, snapshot));
+      await sendFeedMessage(formatEvent(event, snapshot));
     }
     rememberKeys(freshEvents.map((item) => item.key));
     return;
@@ -350,7 +388,7 @@ async function pollMatch() {
 
   const freshSnapshot = unseen([snapshot]);
   if (freshSnapshot.length) {
-    await sendMessage(formatSnapshot(snapshot));
+    await sendFeedMessage(formatSnapshot(snapshot));
     rememberKeys([snapshot.key]);
   }
 }

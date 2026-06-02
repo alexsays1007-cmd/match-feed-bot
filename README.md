@@ -44,6 +44,9 @@ push selected match updates to the configured group chat.
 /source fotmob
 /source api-football
 /source sportscore
+/target
+/target private
+/target group
 /matches
 /matches 2
 /find arsenal
