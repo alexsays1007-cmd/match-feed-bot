@@ -75,6 +75,20 @@ function deliveryChatId() {
   return currentTarget() === "private" && runtime.privateChatId ? runtime.privateChatId : config.chatId;
 }
 
+function watchedLineupKey(runtime) {
+  return `${runtime.watchSource || ""}:${runtime.watchSlug || ""}`;
+}
+
+function shouldFetchLineups(runtime) {
+  if (runtime.watchSource !== "api-football") return true;
+  return runtime.apiFootballLineupSentFor !== watchedLineupKey(runtime);
+}
+
+function pollIntervalMs(source) {
+  if (source === "api-football") return Math.max(180, config.pollSeconds) * 1000;
+  return Math.max(30, config.pollSeconds) * 1000;
+}
+
 async function fetchMatchesForSource(source) {
   if (source === "fotmob") return getFotmobMatches(120);
   if (source === "api-football") return getApiFootballMatches(120);
@@ -345,7 +359,7 @@ async function pollMatch() {
     source === "fotmob"
       ? await getFotmobMatchDetail(runtime.watchMatch)
       : source === "api-football"
-        ? await getApiFootballMatchDetail(runtime.watchMatch)
+        ? await getApiFootballMatchDetail(runtime.watchMatch, { includeLineups: shouldFetchLineups(runtime) })
       : await getMatchDetail(slug);
   const snapshot =
     source === "fotmob"
@@ -365,6 +379,9 @@ async function pollMatch() {
     if (freshLineup.length) {
       await sendFeedMessage(formatLineup(lineup));
       rememberKeys([lineup.key]);
+      if (source === "api-football") {
+        updateRuntime({ apiFootballLineupSentFor: watchedLineupKey(runtime) });
+      }
     }
   }
 
@@ -404,7 +421,7 @@ export async function runDaemon() {
         lastCommandPoll = now;
         await pollCommands();
       }
-      if (now - lastMatchPoll >= Math.max(30, config.pollSeconds) * 1000) {
+      if (now - lastMatchPoll >= pollIntervalMs(getRuntime().watchSource || currentSource())) {
         lastMatchPoll = now;
         await pollMatch();
       }

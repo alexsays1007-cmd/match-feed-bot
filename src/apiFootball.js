@@ -94,15 +94,16 @@ export async function getApiFootballMatches(limit = 80) {
     .slice(0, limit);
 }
 
-export async function getApiFootballMatchDetail(match) {
+export async function getApiFootballMatchDetail(match, options = {}) {
   const fixtureId = typeof match === "string" ? match : match?.fixtureId || match?.id;
   if (!fixtureId) throw new Error("API-Football match is missing fixture id.");
 
-  const [fixture, events, lineups, statistics] = await Promise.all([
+  const includeLineups = options.includeLineups !== false;
+
+  const [fixture, events, lineups] = await Promise.all([
     getJson("/fixtures", { id: fixtureId }),
     getJson("/fixtures/events", { fixture: fixtureId }).catch(() => ({ response: [] })),
-    getJson("/fixtures/lineups", { fixture: fixtureId }).catch(() => ({ response: [] })),
-    getJson("/fixtures/statistics", { fixture: fixtureId }).catch(() => ({ response: [] }))
+    includeLineups ? getJson("/fixtures/lineups", { fixture: fixtureId }).catch(() => ({ response: [] })) : Promise.resolve({ response: [] })
   ]);
 
   return {
@@ -111,7 +112,7 @@ export async function getApiFootballMatchDetail(match) {
     fixture: fixture.response?.[0] || {},
     events: events.response || [],
     lineups: lineups.response || [],
-    statistics: statistics.response || []
+    statistics: []
   };
 }
 
@@ -120,7 +121,7 @@ export function makeApiFootballSnapshot(detail) {
   const match = detail?.match || {};
   const elapsed = fixture.fixture?.status?.elapsed;
   return {
-    key: ["api-football-snapshot", match.id, match.status, elapsed || "", match.score].join("|"),
+    key: ["api-football-snapshot", match.id, match.status, match.score].join("|"),
     home: match.home,
     away: match.away,
     score: match.score,
