@@ -115,7 +115,7 @@ FotMob currently works for:
 Configured FotMob league ids:
 
 ```text
-42,77,78
+42,77,78,114,9806,10304
 ```
 
 Meaning:
@@ -123,6 +123,9 @@ Meaning:
 - `42`: UEFA Champions League
 - `77`: FIFA World Cup
 - `78`: FIFA Club World Cup
+- `114`: International Friendlies
+- `9806`: UEFA Nations League
+- `10304`: Finalissima
 
 FotMob successfully found:
 

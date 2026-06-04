@@ -49,7 +49,7 @@ export const config = {
   scoreOnly: String(process.env.SCORE_ONLY || "false").toLowerCase() === "true",
   includeYellowCards: String(process.env.INCLUDE_YELLOW_CARDS || "false").toLowerCase() === "true",
   sportscoreSrc: process.env.SPORTSCORE_SRC || "velvy-match-feed-bot",
-  fotmobLeagues: (process.env.FOTMOB_LEAGUES || "42,77,78")
+  fotmobLeagues: (process.env.FOTMOB_LEAGUES || "42,77,78,114,9806,10304")
     .split(",")
     .map((item) => Number(item.trim()))
     .filter(Boolean)
