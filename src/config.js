@@ -48,6 +48,9 @@ export const config = {
   commandPollSeconds: Number(process.env.COMMAND_POLL_SECONDS || 3),
   scoreOnly: String(process.env.SCORE_ONLY || "false").toLowerCase() === "true",
   includeYellowCards: String(process.env.INCLUDE_YELLOW_CARDS || "false").toLowerCase() === "true",
+  apiFootballStatsSeconds: Number(process.env.API_FOOTBALL_STATS_SECONDS || 600),
+  apiFootballStatsQuietSeconds: Number(process.env.API_FOOTBALL_STATS_QUIET_SECONDS || 480),
+  apiFootballDailyBudget: Number(process.env.API_FOOTBALL_DAILY_BUDGET || 90),
   sportscoreSrc: process.env.SPORTSCORE_SRC || "velvy-match-feed-bot",
   fotmobLeagues: (process.env.FOTMOB_LEAGUES || "42,77,78,114,9806,10304")
     .split(",")

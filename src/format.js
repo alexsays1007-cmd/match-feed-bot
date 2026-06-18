@@ -60,3 +60,29 @@ ${lineup.away.starters.join(", ")}
 
 Source: ${lineup.source || "FotMob"}`;
 }
+
+export function formatStatsSummary(summary) {
+  const label =
+    summary.reason === "halftime"
+      ? "[MATCH_STATS_HT]"
+      : summary.reason === "fulltime"
+        ? "[MATCH_STATS_FT]"
+        : "[MATCH_STATS]";
+  const status = summary.status ? ` ${summary.status}` : "";
+
+  return `${mention()}
+${label}${status}
+${summary.home} ${summary.score} ${summary.away}
+${summary.lines.join("\n")}
+Source: ${summary.source || "API-Football"}`;
+}
+
+export function formatStatsDiff(diff) {
+  const status = diff.status ? ` ${diff.status}` : "";
+
+  return `${mention()}
+[MATCH_STATS_DIFF]${status}
+${diff.home} ${diff.score} ${diff.away}
+${diff.changes.join("\n")}
+Source: ${diff.source || "API-Football"}`;
+}

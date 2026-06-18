@@ -116,6 +116,14 @@ export async function getApiFootballMatchDetail(match, options = {}) {
   };
 }
 
+export async function getApiFootballStatistics(match) {
+  const fixtureId = typeof match === "string" ? match : match?.fixtureId || match?.id;
+  if (!fixtureId) throw new Error("API-Football match is missing fixture id.");
+
+  const body = await getJson("/fixtures/statistics", { fixture: fixtureId });
+  return normalizeApiFootballStatistics(body.response || []);
+}
+
 export function makeApiFootballSnapshot(detail) {
   const fixture = detail?.fixture || {};
   const match = detail?.match || {};
@@ -145,6 +153,136 @@ export function extractApiFootballEvents(detail) {
     raw: event,
     source: "API-Football"
   }));
+}
+
+function parseStatValue(value) {
+  if (value === null || value === undefined) return null;
+  if (typeof value === "number") return value;
+  const text = String(value).trim();
+  if (!text) return null;
+  const number = Number(text.replace("%", ""));
+  return Number.isFinite(number) ? number : text;
+}
+
+function statSlug(type) {
+  return String(type || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+}
+
+function teamStats(item) {
+  const stats = {};
+  for (const stat of item?.statistics || []) {
+    const key = statSlug(stat.type);
+    if (key) stats[key] = parseStatValue(stat.value);
+  }
+  return {
+    id: item?.team?.id || "",
+    name: item?.team?.name || "Team",
+    stats
+  };
+}
+
+export function normalizeApiFootballStatistics(response) {
+  const teams = (response || []).map(teamStats);
+  if (teams.length < 2) return null;
+  return {
+    source: "API-Football",
+    home: teams[0],
+    away: teams[1]
+  };
+}
+
+const IMPORTANT_STATS = [
+  ["total-shots", "Shots"],
+  ["shots-on-goal", "On target"],
+  ["corner-kicks", "Corners"],
+  ["ball-possession", "Possession", { percent: true }],
+  ["goalkeeper-saves", "Saves"],
+  ["fouls", "Fouls"],
+  ["yellow-cards", "Yellow cards"],
+  ["red-cards", "Red cards"]
+];
+
+function statPair(statistics, key) {
+  if (!statistics) return null;
+  const home = statistics.home.stats[key];
+  const away = statistics.away.stats[key];
+  if (home === null || home === undefined || away === null || away === undefined) return null;
+  return { home, away };
+}
+
+function formatStatValue(value, options = {}) {
+  if (value === null || value === undefined) return "";
+  if (options.percent && typeof value === "number") return `${value}%`;
+  return String(value);
+}
+
+function formatDelta(value) {
+  return value > 0 ? `+${value}` : "0";
+}
+
+export function apiFootballStatsLines(statistics, keys = IMPORTANT_STATS) {
+  if (!statistics) return [];
+  return keys
+    .map(([key, label, options]) => {
+      const pair = statPair(statistics, key);
+      if (!pair) return "";
+      return `${label}: ${formatStatValue(pair.home, options)}-${formatStatValue(pair.away, options)}`;
+    })
+    .filter(Boolean);
+}
+
+export function makeApiFootballStatsSummary(statistics, snapshot, reason = "summary") {
+  const lines = apiFootballStatsLines(statistics);
+  if (!lines.length) return null;
+  const status = [snapshot?.status, snapshot?.minute ? `${snapshot.minute}'` : ""].filter(Boolean).join(" ");
+  return {
+    key: ["api-football-stats", snapshot?.home, snapshot?.away, snapshot?.score, status, lines.join("|"), reason].join("|"),
+    reason,
+    home: snapshot?.home || statistics.home.name,
+    away: snapshot?.away || statistics.away.name,
+    score: snapshot?.score || "vs",
+    status,
+    lines,
+    source: "API-Football"
+  };
+}
+
+export function makeApiFootballStatsDiff(previous, current, snapshot) {
+  if (!previous || !current) return null;
+
+  const diffKeys = [
+    ["total-shots", "Shots"],
+    ["shots-on-goal", "On target"],
+    ["corner-kicks", "Corners"],
+    ["goalkeeper-saves", "Saves"]
+  ];
+  const changes = [];
+
+  for (const [key, label] of diffKeys) {
+    const before = statPair(previous, key);
+    const after = statPair(current, key);
+    if (!before || !after) continue;
+    const homeDelta = typeof after.home === "number" && typeof before.home === "number" ? after.home - before.home : 0;
+    const awayDelta = typeof after.away === "number" && typeof before.away === "number" ? after.away - before.away : 0;
+    if (homeDelta > 0 || awayDelta > 0) {
+      changes.push(`${label}: ${after.home}-${after.away} (${formatDelta(homeDelta)}/${formatDelta(awayDelta)})`);
+    }
+  }
+
+  if (!changes.length) return null;
+  const status = [snapshot?.status, snapshot?.minute ? `${snapshot.minute}'` : ""].filter(Boolean).join(" ");
+  return {
+    key: ["api-football-stats-diff", snapshot?.home, snapshot?.away, snapshot?.score, status, changes.join("|")].join("|"),
+    home: snapshot?.home || current.home.name,
+    away: snapshot?.away || current.away.name,
+    score: snapshot?.score || "vs",
+    status,
+    changes,
+    source: "API-Football"
+  };
 }
 
 export function extractApiFootballLineup(detail) {

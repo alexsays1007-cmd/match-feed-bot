@@ -5,7 +5,10 @@ import {
   extractApiFootballLineup,
   getApiFootballMatches,
   getApiFootballMatchDetail,
-  makeApiFootballSnapshot
+  getApiFootballStatistics,
+  makeApiFootballSnapshot,
+  makeApiFootballStatsDiff,
+  makeApiFootballStatsSummary
 } from "./apiFootball.js";
 import { getMatches, getMatchDetail, readMatches } from "./sportscore.js";
 import { extractEvents, makeSnapshot, summarizeMatch } from "./events.js";
@@ -17,7 +20,7 @@ import {
   getFotmobMatchDetail,
   makeFotmobSnapshot
 } from "./fotmob.js";
-import { formatEvent, formatLineup, formatSnapshot } from "./format.js";
+import { formatEvent, formatLineup, formatSnapshot, formatStatsDiff, formatStatsSummary } from "./format.js";
 import { clearSent, getRuntime, rememberKeys, unseen, updateRuntime } from "./state.js";
 
 let updateOffset = 0;
@@ -92,6 +95,52 @@ function pollIntervalMs(source) {
 
 function finishedStatus(status) {
   return /^(FT|AET|PEN|Finished|Full-Time)$/i.test(String(status || ""));
+}
+
+function todayKey() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function apiUsage(runtime = getRuntime()) {
+  const today = todayKey();
+  const usage = runtime.apiFootballUsage || {};
+  if (usage.date !== today) return { date: today, count: 0 };
+  return { date: today, count: Number(usage.count || 0) };
+}
+
+function canSpendApiFootball(count) {
+  const usage = apiUsage();
+  return usage.count + count <= config.apiFootballDailyBudget;
+}
+
+function recordApiFootballCalls(count) {
+  const usage = apiUsage();
+  updateRuntime({ apiFootballUsage: { date: usage.date, count: usage.count + count } });
+}
+
+function apiFootballDetailCost(runtime) {
+  return shouldFetchLineups(runtime) ? 3 : 2;
+}
+
+function halftimeStatus(status) {
+  return /^HT$/i.test(String(status || ""));
+}
+
+function statsReason(snapshot, runtime, now) {
+  if (halftimeStatus(snapshot.status) && runtime.apiFootballStatsHalftimeFor !== watchedLineupKey(runtime)) {
+    return "halftime";
+  }
+  if (finishedStatus(snapshot.status) && runtime.apiFootballStatsFulltimeFor !== watchedLineupKey(runtime)) {
+    return "fulltime";
+  }
+
+  const lastStatsAt = Date.parse(runtime.apiFootballStatsAt || "") || 0;
+  if (now - lastStatsAt < Math.max(300, config.apiFootballStatsSeconds) * 1000) return "";
+
+  const lastFeedAt = Date.parse(runtime.apiFootballLastFeedAt || "") || 0;
+  if (lastFeedAt && now - lastFeedAt < Math.max(180, config.apiFootballStatsQuietSeconds) * 1000) return "";
+
+  return "quiet";
 }
 
 async function fetchMatchesForSource(source) {
@@ -231,7 +280,12 @@ async function watchMatch(arg, message) {
     watchLabel: `${match.home} ${match.score} ${match.away}`,
     watchStatus: match.status,
     finishSeenCount: 0,
-    privateChatId: privateChat(message) ? String(chatId) : runtime.privateChatId
+    privateChatId: privateChat(message) ? String(chatId) : runtime.privateChatId,
+    apiFootballStatsAt: "",
+    apiFootballStats: null,
+    apiFootballStatsHalftimeFor: "",
+    apiFootballStatsFulltimeFor: "",
+    apiFootballLastFeedAt: ""
   });
   clearSent();
   await sendMessage(`Watching now:\n${match.home} ${match.score} ${match.away}\nSlug: ${match.slug}\nTarget: ${currentTarget()}`, chatId);
@@ -360,6 +414,10 @@ async function pollMatch() {
   const source = runtime.watchSource || currentSource();
   const slug = runtime.watchSlug || config.matchSlug;
   if (!slug) return;
+  if (source === "api-football" && !canSpendApiFootball(apiFootballDetailCost(runtime))) {
+    console.error("API-Football daily budget reached; skipping poll.");
+    return;
+  }
 
   const detail =
     source === "fotmob"
@@ -367,6 +425,8 @@ async function pollMatch() {
       : source === "api-football"
         ? await getApiFootballMatchDetail(runtime.watchMatch, { includeLineups: shouldFetchLineups(runtime) })
       : await getMatchDetail(slug);
+  if (source === "api-football") recordApiFootballCalls(apiFootballDetailCost(runtime));
+
   const snapshot =
     source === "fotmob"
       ? makeFotmobSnapshot(detail)
@@ -386,7 +446,10 @@ async function pollMatch() {
       await sendFeedMessage(formatLineup(lineup));
       rememberKeys([lineup.key]);
       if (source === "api-football") {
-        updateRuntime({ apiFootballLineupSentFor: watchedLineupKey(runtime) });
+        updateRuntime({
+          apiFootballLineupSentFor: watchedLineupKey(runtime),
+          apiFootballLastFeedAt: new Date().toISOString()
+        });
       }
     }
   }
@@ -406,12 +469,55 @@ async function pollMatch() {
       await sendFeedMessage(formatEvent(event, snapshot));
     }
     rememberKeys(freshEvents.map((item) => item.key));
+    if (source === "api-football") {
+      updateRuntime({ apiFootballLastFeedAt: new Date().toISOString() });
+    }
     return;
   }
 
   const freshSnapshot = unseen([snapshot]);
-  if (freshSnapshot.length) {
+  let sentSnapshot = false;
+  const now = Date.now();
+  let sentStats = false;
+
+  if (source === "api-football") {
+    const latestRuntime = getRuntime();
+    const reason = statsReason(snapshot, latestRuntime, now);
+    if (reason && canSpendApiFootball(1)) {
+      try {
+        const statistics = await getApiFootballStatistics(runtime.watchMatch);
+        recordApiFootballCalls(1);
+        if (statistics) {
+          const previous = latestRuntime.apiFootballStats;
+          const summary = makeApiFootballStatsSummary(statistics, snapshot, reason);
+          const diff = reason === "quiet" ? makeApiFootballStatsDiff(previous, statistics, snapshot) : null;
+          const message = reason === "quiet" && diff ? formatStatsDiff(diff) : summary ? formatStatsSummary(summary) : "";
+
+          if (message) {
+            await sendFeedMessage(message);
+            sentStats = true;
+          }
+
+          const patch = {
+            apiFootballStatsAt: new Date().toISOString(),
+            apiFootballStats: statistics
+          };
+          if (reason === "halftime") patch.apiFootballStatsHalftimeFor = watchedLineupKey(runtime);
+          if (reason === "fulltime") patch.apiFootballStatsFulltimeFor = watchedLineupKey(runtime);
+          if (sentStats) patch.apiFootballLastFeedAt = new Date().toISOString();
+          updateRuntime(patch);
+        }
+      } catch (error) {
+        console.error(`API-Football statistics skipped: ${error.message}`);
+      }
+    }
+  }
+
+  if (freshSnapshot.length && !sentStats) {
     await sendFeedMessage(formatSnapshot(snapshot));
+    rememberKeys([snapshot.key]);
+    sentSnapshot = true;
+  } else if (freshSnapshot.length) {
     rememberKeys([snapshot.key]);
   }
 
@@ -426,6 +532,10 @@ async function pollMatch() {
     }
   } else if (runtime.finishSeenCount) {
     updateRuntime({ finishSeenCount: 0 });
+  }
+
+  if (source === "api-football" && sentSnapshot) {
+    updateRuntime({ apiFootballLastFeedAt: new Date().toISOString() });
   }
 }
 
