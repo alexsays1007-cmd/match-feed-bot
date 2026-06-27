@@ -79,6 +79,8 @@ export async function getApiFootballMatches(limit = 80) {
   const tomorrow = await getJson("/fixtures", { date: isoDate(1) }).catch(() => ({ response: [] }));
 
   const seen = new Set();
+  const now = Date.now();
+  const recentWindowMs = 3 * 60 * 60 * 1000;
   return [...(live.response || []), ...(today.response || []), ...(tomorrow.response || [])]
     .map(normalizeFixture)
     .filter((match) => {
@@ -86,12 +88,17 @@ export async function getApiFootballMatches(limit = 80) {
       seen.add(match.id);
       return true;
     })
+    .filter((match) => isLiveStatus(match.status) || match.sortTime >= now - recentWindowMs)
     .sort((a, b) => {
-      if (/^(1H|2H|HT|ET|P|BT)$/i.test(a.status) && !/^(1H|2H|HT|ET|P|BT)$/i.test(b.status)) return -1;
-      if (/^(1H|2H|HT|ET|P|BT)$/i.test(b.status) && !/^(1H|2H|HT|ET|P|BT)$/i.test(a.status)) return 1;
+      if (isLiveStatus(a.status) && !isLiveStatus(b.status)) return -1;
+      if (isLiveStatus(b.status) && !isLiveStatus(a.status)) return 1;
       return (a.sortTime || Number.MAX_SAFE_INTEGER) - (b.sortTime || Number.MAX_SAFE_INTEGER);
     })
     .slice(0, limit);
+}
+
+function isLiveStatus(status) {
+  return /^(1H|2H|HT|ET|P|BT|LIVE)$/i.test(String(status || ""));
 }
 
 export async function getApiFootballMatchDetail(match, options = {}) {
